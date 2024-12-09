@@ -26,6 +26,7 @@
 #include <stddef.h>
 #include <stdarg.h>
 #include <sys/stat.h>
+#include <sys/param.h>
 
 #ifdef WIN32
 #include <sys/utime.h>
@@ -52,6 +53,7 @@
 
 #define SQRTHALF            0.70710678118654752440084436210485
 
+
 #define NEXT_SAMPLE(dest)\
 {\
     decode_t s;\
@@ -64,7 +66,7 @@
 GainDataPtr theGainData;
 
 //replay_gain tags
-static char *RGTags[num_rg_tags] = 
+static char *RGTags[num_rg_tags] =
 {
     "replaygain_track_gain",
     "replaygain_album_gain",
@@ -100,6 +102,7 @@ static char* temp_file_name(const char* input_file_name)
 #else
     static const char delim = '/';
 #endif
+#if 0
     char* temp_file_buf = (char*)malloc(strlen(input_file_name) + 64);
     const char* lastDelim = strrchr(input_file_name, delim);
     int dirLen;
@@ -126,15 +129,26 @@ static char* temp_file_name(const char* input_file_name)
 		fprintf(stderr, "Error: unable to create temporary file");
 		exit(1);
 	}
-
     //caller is responsible for freeing the memory
     return temp_file_buf;
+#else
+    char *tempFileName = (char*)malloc(strlen(input_file_name) + 256);
+
+    char *dir = "/tmp/" ;
+    sprintf( tempFileName , "%s/aacgain.XXXXXXXXXX.mp4" , dir ) ;
+    if( mkstemps( tempFileName , 4 ) < 0 )
+    {
+	fprintf(stderr, "Error: unable to create temporary file");
+	exit(1);
+    }
+    return tempFileName;
+#endif
 }
 
 static MP4FileHandle mp4_open_ro(GainDataPtr gd, char *mp4_file_name)
 {
 	MP4FileHandle fh = MP4Read(mp4_file_name);
-	if (fh) 
+	if (fh)
 	{
 		gd->mp4File = fh;
 		if (!gd->mp4File)
@@ -179,7 +193,7 @@ static void mp4_close(GainDataPtr gd)
 	}
 }
 
-static int aac_analyze(void *sample_buffer, long num_samples, unsigned char channels, 
+static int aac_analyze(void *sample_buffer, long num_samples, unsigned char channels,
                       int compute_gain)
 {
     decode_t *samples = (decode_t *)sample_buffer;
@@ -187,7 +201,7 @@ static int aac_analyze(void *sample_buffer, long num_samples, unsigned char chan
     rg_t *left_samples;
     rg_t *right_samples;
     long i;
-    
+
     left_samples = new rg_t[num_samples];
     if (!left_samples)
         return 1;
@@ -277,7 +291,7 @@ static int parse_mp4_file(GainDataPtr gd, ProgressCallback report_progress, int 
         NeAACDecClose(hDecoder);
         return 1;
     }
-	
+
     for (sampleId = 1; sampleId <= numSamples; sampleId++)
     {
         /* get acces unit from MP4 file */
@@ -594,7 +608,7 @@ unsigned int aac_get_sample_rate(AACGainHandle gh)
     return gd->samplerate;
 }
 
-int aac_compute_gain(AACGainHandle gh, rg_t *peak, unsigned char *min_gain, 
+int aac_compute_gain(AACGainHandle gh, rg_t *peak, unsigned char *min_gain,
                      unsigned char *max_gain, ProgressCallback reportProgress)
 {
     int rc = 0;
@@ -617,7 +631,7 @@ int aac_compute_gain(AACGainHandle gh, rg_t *peak, unsigned char *min_gain,
         *min_gain = gd->min_gain;
     if (max_gain)
         *max_gain = gd->max_gain;
-    
+
     return rc;
 }
 
@@ -644,7 +658,7 @@ int aac_compute_peak(AACGainHandle gh, rg_t *peak, unsigned char *min_gain,
         *min_gain = gd->min_gain;
     if (max_gain)
         *max_gain = gd->max_gain;
-    
+
     return rc;
 }
 
@@ -679,9 +693,9 @@ int aac_modify_gain(AACGainHandle gh, int left, int right,
     gf = gd->GainHead;
     while (gf)
     {
-        if (((gf->channel == 0) && 
+        if (((gf->channel == 0) &&
             (((gf->orig_gain + left) < 0) || ((gf->orig_gain + left) > 255))) ||
-            ((gf->channel == 1) && 
+            ((gf->channel == 1) &&
             (((gf->orig_gain + right) < 0) || ((gf->orig_gain + right) > 255))))
         {
             fprintf(stderr, "Error: Wrap while modifying gain.\n");
@@ -738,7 +752,7 @@ int aac_set_tag_int_2(AACGainHandle gh, rg_tag_e tag, int p1, int p2)
 
     char vstr[128];
     sprintf(vstr, "%d,%d", p1, p2);
-   
+
 	set_tag(gd, tag, vstr);
 
     return 0;
@@ -782,6 +796,8 @@ int aac_clear_rg_tags(AACGainHandle gh)
     return 0;
 }
 
+static int fastcopy(const char *from, const char *to);
+
 int aac_close(AACGainHandle gh)
 {
     GainDataPtr gd = (GainDataPtr)gh;
@@ -822,6 +838,44 @@ int aac_close(AACGainHandle gh)
                 int rc = remove(gd->mp4file_name);
                 if (rc == 0)
                     rc = rename(temp_name, gd->mp4file_name);
+		if (rc)
+                    rc = fastcopy(temp_name, gd->mp4file_name);
+		if (rc)
+		{
+                    FILE *inFile = fopen(temp_name, "rb");
+                    if (!inFile)
+                    {
+                        fprintf(stderr, "Error: unable to reopen file %s to create temporary file\n",
+                                temp_name);
+                        exit( 1 ) ;
+                    }
+
+                    FILE *outFile = fopen(gd->mp4file_name, "wb");
+                    if (!outFile)
+                    {
+                        fprintf(stderr, "Error: unable to reopen file %s to create temporary file\n",
+                                gd->mp4file_name);
+                        exit( 1 ) ;
+                    }
+
+                    //copy the original file to the temp file
+                    static const u_int32_t blockSize = (1024*1024);
+                    u_int8_t *buffer = new u_int8_t[blockSize];
+                    for (;;)
+                    {
+                        int bytesRead = fread(buffer, 1, blockSize, inFile);
+//                      printf( "bytesRead:%d\n" , bytesRead ) ;
+                        
+                        if (bytesRead)
+                            fwrite(buffer, 1, bytesRead, outFile);
+                        if (bytesRead < blockSize)
+                            break;
+                    }
+                    fclose(inFile);
+                    fclose(outFile);
+                    remove(temp_name);
+		    rc = 0;
+		}
                 if (rc)
                     fprintf(stderr, "Error: attempt to create file %s failed. Your output file is named %s",
                         gd->mp4file_name, temp_name);
@@ -842,8 +896,8 @@ int aac_close(AACGainHandle gh)
     {
         if (!gd->abort)
         {
-			struct utimbuf setTime;	
-			
+			struct utimbuf setTime;
+
 			setTime.actime = pt->savedAttributes.st_atime;
 			setTime.modtime = pt->savedAttributes.st_mtime;
 			utime(gd->mp4file_name, &setTime);
@@ -855,4 +909,98 @@ int aac_close(AACGainHandle gh)
     delete gd;
 
     return rc;
+}
+
+
+
+static int fastcopy(const char *from, const char *to)
+{
+        struct timespec ts[2];
+        static u_int blen = MAXPHYS;
+        static char *bp = NULL;
+        mode_t oldmode;
+        int nread, from_fd, to_fd;
+        struct stat tsb;
+        struct stat sb;
+	struct stat *sbp ;
+
+	printf( "%s->%s\n",from,to);
+
+        if (lstat(from, &sb)) {
+//                warn("%s", from);
+                return (1);
+        }
+	sbp = &sb;
+
+        if ((from_fd = open(from, O_RDONLY, 0)) < 0) {
+//                warn("fastcopy: open() failed (from): %s", from);
+                return (1);
+        }
+        if (bp == NULL && (bp = (char *)malloc((size_t)blen)) == NULL) {
+//                warnx("malloc(%u) failed", blen);
+                (void)close(from_fd);
+                return (1);
+        }
+        while ((to_fd =
+            open(to, O_CREAT | O_EXCL | O_TRUNC | O_WRONLY, 0)) < 0) {
+                if (errno == EEXIST && unlink(to) == 0)
+                        continue;
+//                warn("fastcopy: open() failed (to): %s", to);
+                (void)close(from_fd);
+                return (1);
+        }
+        while ((nread = read(from_fd, bp, (size_t)blen)) > 0)
+                if (write(to_fd, bp, (size_t)nread) != nread) {
+//                        warn("fastcopy: write() failed: %s", to);
+                        goto err;
+                }
+        if (nread < 0) {
+//                warn("fastcopy: read() failed: %s", from);
+	  err:
+	    if (unlink(to))
+	    {
+//                        warn("%s: remove", to);
+	    }
+
+                (void)close(from_fd);
+                (void)close(to_fd);
+                return (1);
+        }
+
+        oldmode = sbp->st_mode & ALLPERMS;
+        if (fchown(to_fd, sbp->st_uid, sbp->st_gid)) {
+//                warn("%s: set owner/group (was: %lu/%lu)", to,
+//                    (u_long)sbp->st_uid, (u_long)sbp->st_gid);
+                if (oldmode & (S_ISUID | S_ISGID)) {
+//                        warnx(
+//"%s: owner/group changed; clearing suid/sgid (mode was 0%03o)",
+//                            to, oldmode);
+                        sbp->st_mode &= ~(S_ISUID | S_ISGID);
+                }
+        }
+        if (fchmod(to_fd, sbp->st_mode))
+	{
+//	    warn("%s: set mode (was: 0%03o)", to, oldmode);
+	}
+
+        /*
+         * POSIX 1003.2c states that if _POSIX_ACL_EXTENDED is in effect
+         * for dest_file, then its ACLs shall reflect the ACLs of the
+         * source_file.
+         */
+//        preserve_fd_acls(from_fd, to_fd, from, to);
+        (void)close(from_fd);
+
+        if (close(to_fd)) {
+//                warn("%s", to);
+                return (1);
+        }
+
+        if (unlink(from)) {
+//                warn("%s: remove", from);
+                return (1);
+        }
+//        if (vflg)
+//                printf("%s -> %s\n", from, to);
+        return (0);
 }
