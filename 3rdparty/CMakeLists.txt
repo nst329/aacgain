@@ -6,7 +6,7 @@ ProcessorCount(N)
 
 ExternalProject_Add(faad2_proj
                     SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/faad2"
-                    CONFIGURE_COMMAND autoreconf -i && ./configure --prefix=${CMAKE_CURRENT_BINARY_DIR} --disable-shared --enable-static
+                    CONFIGURE_COMMAND autoreconf -i && ./configure --prefix=${CMAKE_CURRENT_BINARY_DIR} --disable-shared --enable-static CXXFLAGS=${CMAKE_CXX_FLAGS_RELEASE} CFLAGS=${CMAKE_C_FLAGS_RELEASE}
                     BUILD_COMMAND make -j ${N}
                     INSTALL_COMMAND make -j ${N} install
                     BUILD_IN_SOURCE 1
@@ -14,7 +14,7 @@ ExternalProject_Add(faad2_proj
 
 ExternalProject_Add(mp4v2_proj
                     SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/mp4v2"
-                    CONFIGURE_COMMAND autoreconf -i && ./configure --prefix=${CMAKE_CURRENT_BINARY_DIR} --disable-shared --enable-static
+                    CONFIGURE_COMMAND autoreconf -i && ./configure --prefix=${CMAKE_CURRENT_BINARY_DIR} --disable-shared --enable-static CXXFLAGS=${CMAKE_CXX_FLAGS_RELEASE} CFLAGS=${CMAKE_C_FLAGS_RELEASE}
                     BUILD_COMMAND make -j ${N}
                     INSTALL_COMMAND make -j ${N} install
                     BUILD_IN_SOURCE 1
