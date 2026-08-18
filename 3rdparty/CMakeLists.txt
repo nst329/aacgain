@@ -4,19 +4,25 @@ IF(UNIX)
 include(ProcessorCount)
 ProcessorCount(N)
 
+if(CMAKE_MAKE_PROGRAM)
+    set(AACGAIN_EXTERNAL_MAKE "${CMAKE_MAKE_PROGRAM}")
+else()
+    set(AACGAIN_EXTERNAL_MAKE make)
+endif()
+
 ExternalProject_Add(faad2_proj
                     SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/faad2"
                     CONFIGURE_COMMAND autoreconf -i && ./configure --prefix=${CMAKE_CURRENT_BINARY_DIR} --disable-shared --enable-static CXXFLAGS=${CMAKE_CXX_FLAGS_RELEASE} CFLAGS=${CMAKE_C_FLAGS_RELEASE}
-                    BUILD_COMMAND make -j ${N}
-                    INSTALL_COMMAND make -j ${N} install
+                    BUILD_COMMAND ${AACGAIN_EXTERNAL_MAKE} -j ${N}
+                    INSTALL_COMMAND ${AACGAIN_EXTERNAL_MAKE} -j ${N} install
                     BUILD_IN_SOURCE 1
                    )
 
 ExternalProject_Add(mp4v2_proj
                     SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/mp4v2"
                     CONFIGURE_COMMAND autoreconf -i && ./configure --prefix=${CMAKE_CURRENT_BINARY_DIR} --disable-shared --enable-static CXXFLAGS=${CMAKE_CXX_FLAGS_RELEASE} CFLAGS=${CMAKE_C_FLAGS_RELEASE}
-                    BUILD_COMMAND make -j ${N}
-                    INSTALL_COMMAND make -j ${N} install
+                    BUILD_COMMAND ${AACGAIN_EXTERNAL_MAKE} -j ${N}
+                    INSTALL_COMMAND ${AACGAIN_EXTERNAL_MAKE} -j ${N} install
                     BUILD_IN_SOURCE 1
                    )
 
