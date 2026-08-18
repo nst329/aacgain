@@ -25,8 +25,8 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include <stdarg.h>
+#include <vector>
 #include <sys/stat.h>
-#include <sys/param.h>
 
 #ifdef WIN32
 #include <sys/utime.h>
@@ -96,50 +96,42 @@ static void mp4v2_lib_message_func(MP4LogLevel loglevel, const char* fmt, va_lis
 
 static char* temp_file_name(const char* input_file_name)
 {
-    //find the trailing directory delimiter
 #ifdef WIN32
-    static const char delim = '\\';
-#else
-    static const char delim = '/';
-#endif
-#if 0
     char* temp_file_buf = (char*)malloc(strlen(input_file_name) + 64);
-    const char* lastDelim = strrchr(input_file_name, delim);
-    int dirLen;
+    const char* lastDelim = strrchr(input_file_name, '\\');
+    int dirLen = lastDelim ? (int)(lastDelim - input_file_name + 1) : 0;
 
     if (lastDelim)
+        memcpy(temp_file_buf, input_file_name, dirLen);
+
+    for (uint32_t i = getpid(); i < 0xFFFFFFFF; i++)
     {
-        //find the length of input file directory name (including trailing delim)
-        dirLen = lastDelim - input_file_name + 1;
-        //copy the direcory name (including trailing delim)
-        strncpy(temp_file_buf, input_file_name, dirLen);
-    } else {
-        dirLen = 0;
+        sprintf(temp_file_buf + dirLen, "aacgain-tmp-%u.mp4", i);
+        struct stat status;
+        if (stat(temp_file_buf, &status))
+            return temp_file_buf;
     }
 
-	uint32_t i;
-	for (i = getpid(); i < 0xFFFFFFFF; i++) {
-		sprintf(temp_file_buf + dirLen, "tmp%u.mp4", i);
-		struct stat status;
-		if (stat(temp_file_buf, &status)) {
-			break;
-		}
-	}
-	if (i == 0xFFFFFFFF) {
-		fprintf(stderr, "Error: unable to create temporary file");
-		exit(1);
-	}
-    //caller is responsible for freeing the memory
-    return temp_file_buf;
+    fprintf(stderr, "Error: unable to create temporary file");
+    free(temp_file_buf);
+    exit(1);
 #else
-    char *tempFileName = (char*)malloc(strlen(input_file_name) + 256);
+    const char* lastDelim = strrchr(input_file_name, '/');
+    size_t dirLen = lastDelim ? (size_t)(lastDelim - input_file_name + 1) : 0;
+    size_t capacity = strlen(input_file_name) + 64;
+    char* tempFileName = (char*)malloc(capacity);
 
-    char *dir = "/tmp/" ;
-    sprintf( tempFileName , "%s/aacgain.XXXXXXXXXX.mp4" , dir ) ;
-    if( mkstemps( tempFileName , 4 ) < 0 )
+    if (lastDelim)
+        snprintf(tempFileName, capacity, "%.*saacgain.XXXXXXXXXX.mp4",
+                 (int)dirLen, input_file_name);
+    else
+        snprintf(tempFileName, capacity, "./aacgain.XXXXXXXXXX.mp4");
+
+    if (mkstemps(tempFileName, 4) < 0)
     {
-	fprintf(stderr, "Error: unable to create temporary file");
-	exit(1);
+        fprintf(stderr, "Error: unable to create temporary file");
+        free(tempFileName);
+        exit(1);
     }
     return tempFileName;
 #endif
@@ -163,23 +155,6 @@ static MP4FileHandle mp4_open_ro(GainDataPtr gd, char *mp4_file_name)
 		}
 	}
 	return fh;
-}
-
-static void mp4_open_rw(GainDataPtr gd, char *mp4_file_name)
-{
-	static const char *msg = "Unable to open file %s for writing.\n";
-	gd->mp4File = MP4Modify(gd->temp_name, 0);
-	if (!gd->mp4File)
-	{
-		fprintf(stderr, msg, gd->temp_name);
-		exit(1);
-	}
-	gd->itmfList = MP4ItmfGetItems(gd->mp4File);
-	if (!gd->itmfList)
-	{
-		fprintf(stderr, msg, gd->temp_name);
-		exit(1);
-	}
 }
 
 static void mp4_close(GainDataPtr gd)
@@ -338,47 +313,6 @@ static int parse_mp4_file(GainDataPtr gd, ProgressCallback report_progress, int 
     return frameInfo.error;
 }
 
-static void prepare_to_write(GainDataPtr gd)
-{
-    if (!gd->open_for_write)
-    {
-		//aacgain always uses a temp file; create it now
-		gd->temp_name = temp_file_name(gd->mp4file_name);
-		FILE *tmpFile = fopen(gd->temp_name, "wb");
-		if (!tmpFile)
-		{
-			fprintf(stderr, "Error: unable to create temporary file %s\n", gd->temp_name);
-			exit(1);
-		}
-		//close the MP4MetaFile and reopen as stdio file
-		mp4_close(gd);
-		FILE *inFile = fopen(gd->mp4file_name, "rb");
-		if (!inFile)
-		{
-			fprintf(stderr, "Error: unable to reopen file %s to create temporary file\n",
-				gd->mp4file_name);
-			exit(1);
-		}
-
-		//copy the original file to the temp file
-		static const uint32_t blockSize = 4096;
-		uint8_t *buffer = new uint8_t[blockSize];
-		for (;;)
-		{
-			int bytesRead = fread(buffer, 1, blockSize, inFile);
-			if (bytesRead)
-				fwrite(buffer, 1, bytesRead, tmpFile);
-			if (bytesRead < blockSize)
-				break;
-		}
-		fclose(inFile);
-		fclose(tmpFile);
-		delete buffer;
-		mp4_open_rw(gd, gd->temp_name);
-	}
-    gd->open_for_write = 1;
-}
-
 static MP4ItmfItem *find_metadata(GainDataPtr gd, rg_tag_e tag) {
 	char* name = RGTags[tag];
 	MP4ItmfItemList *list = (MP4ItmfItemList *)gd->itmfList;
@@ -430,29 +364,56 @@ static void set_tag(GainDataPtr gd, rg_tag_e tag, char *value)
 	}
 }
 
-static int make_gain_adjustments(GainDataPtr gd, int left, int right)
+static void set_pending_tag(GainDataPtr gd, rg_tag_e tag, const char *value)
 {
-	//cast the file handle as MP4MetaFile, so we can modify the gain
-	MP4MetaFile *mf = (MP4MetaFile *)gd->mp4File;
+    free(gd->pending_tag_values[tag]);
+    gd->pending_tag_values[tag] = strdup(value);
+    gd->write_requested = 1;
+}
 
-	//loop over all global_gain fields in the track
-	GainFixupPtr gf = gd->GainHead;
-	while (gf)
-	{
-		//compute new global_gain
-		uint8_t new_gain = gf->orig_gain + (uint8_t)((gf->channel == 0) ? left : right);
+static void refresh_metadata(GainDataPtr gd)
+{
+    if (gd->itmfList)
+        MP4ItmfItemListFree((MP4ItmfItemList *)gd->itmfList);
+    gd->itmfList = MP4ItmfGetItems((MP4FileHandle)gd->mp4File);
+}
 
-		//update global_gain in the sample
-		mf->ModifySampleByte(gd->track, gf->sampleId, new_gain, gf->sample_offset, gf->bit_offset);
+// Applies deferred ReplayGain metadata to the output MP4 before it is written.
+static void apply_pending_metadata(MP4MetaFile& file, void *context)
+{
+    GainDataPtr gd = (GainDataPtr)context;
+    gd->mp4File = &file;
+    gd->itmfList = NULL;
+    refresh_metadata(gd);
+    if (!gd->itmfList)
+        return;
 
-		GainFixupPtr prev = gf;
-		gf = gf->next;
-		free(prev);
-	}
+    if (gd->clear_rg_tags)
+    {
+        for (uint32_t i = 0; i < num_rg_tags; i++)
+        {
+            MP4ItmfItem *item = find_metadata(gd, (rg_tag_e)i);
+            if (item)
+                MP4ItmfRemoveItem(gd->mp4File, item);
+        }
+        MP4ItmfItemListFree((MP4ItmfItemList *)gd->itmfList);
+        gd->itmfList = NULL;
+    }
 
-	gd->GainHead = NULL;
+    for (uint32_t i = 0; i < num_rg_tags; i++)
+    {
+        if (gd->pending_tag_values[i])
+        {
+            refresh_metadata(gd);
+            set_tag(gd, (rg_tag_e)i, gd->pending_tag_values[i]);
+        }
+    }
 
-	return 0;
+    if (gd->itmfList)
+    {
+        MP4ItmfItemListFree((MP4ItmfItemList *)gd->itmfList);
+        gd->itmfList = NULL;
+    }
 }
 
 int aac_open(char *mp4_file_name, int use_temp, int preserve_timestamp, int track_index, AACGainHandle *gh)
@@ -465,10 +426,8 @@ int aac_open(char *mp4_file_name, int use_temp, int preserve_timestamp, int trac
 
     *gh = NULL;
 
-    //In order to allow processed files to play on very old iPods, which are extremely sensitive to
-    // file format, we always use a temp file. This runs the MP4Optimize function,
-    // which rewrites the processed file in the canonical order.
-    use_temp = true;
+    // AAC output is always built in a sibling temporary file and replaced atomically.
+    (void)use_temp;
 
     file_name_len = strlen(mp4_file_name);
     if ((file_name_len >= 5) && (strcmp(mp4_file_name + file_name_len - 4, ".m4p") == 0))
@@ -501,17 +460,21 @@ int aac_open(char *mp4_file_name, int use_temp, int preserve_timestamp, int trac
     gd = new GainData;
 	gd->track = MP4_INVALID_TRACK_ID;
     gd->analyze = 0;
-    gd->use_temp = use_temp;
-    gd->open_for_write = 0;
-    gd->gain_read = 0;
+	gd->write_requested = 0;
+	gd->clear_rg_tags = 0;
+	gd->gain_modified = 0;
+	gd->gain_left = 0;
+	gd->gain_right = 0;
+	gd->gain_read = 0;
     gd->peak = 0;
     gd->hDecoder = NULL;
     gd->abort = 0;
     gd->preserve_timestamp = pt;
-    gd->GainHead = NULL;
+	gd->GainHead = NULL;
+	for (uint32_t i = 0; i < num_rg_tags; i++)
+		gd->pending_tag_values[i] = NULL;
 
-    gd->mp4file_name = strdup(mp4_file_name);
-    gd->temp_name = NULL;
+	gd->mp4file_name = strdup(mp4_file_name);
 
     unsigned char *buffer = NULL;
     unsigned int buffer_size = 0;
@@ -705,9 +668,10 @@ int aac_modify_gain(AACGainHandle gh, int left, int right,
         gf = gf->next;
     }
 
-	prepare_to_write(gd);
-
-	make_gain_adjustments(gd, left, right);
+	gd->gain_left = left;
+	gd->gain_right = right;
+	gd->gain_modified = 1;
+	gd->write_requested = 1;
 
     return rc;
 }
@@ -715,19 +679,26 @@ int aac_modify_gain(AACGainHandle gh, int left, int right,
 int aac_set_tag_float(AACGainHandle gh, rg_tag_e tag, rg_t value)
 {
     GainDataPtr gd = (GainDataPtr)gh;
-    prepare_to_write(gd);
 
 	//format the value
     char vstr[32];
     sprintf(vstr, "%-.2f", value);
 
-	set_tag(gd, tag, vstr);
+	set_pending_tag(gd, tag, vstr);
     return 0;
 }
 
 int aac_get_tag_float(AACGainHandle gh, rg_tag_e tag, rg_t *value)
 {
     GainDataPtr gd = (GainDataPtr)gh;
+	if (gd->pending_tag_values[tag])
+	{
+		sscanf(gd->pending_tag_values[tag], "%lf", value);
+		return 0;
+	}
+	if (gd->clear_rg_tags)
+		return 1;
+
     MP4ItmfItem *item = find_metadata(gd, tag);
     if (item)
     {
@@ -748,12 +719,11 @@ int aac_get_tag_float(AACGainHandle gh, rg_tag_e tag, rg_t *value)
 int aac_set_tag_int_2(AACGainHandle gh, rg_tag_e tag, int p1, int p2)
 {
     GainDataPtr gd = (GainDataPtr)gh;
-    prepare_to_write(gd);
 
     char vstr[128];
     sprintf(vstr, "%d,%d", p1, p2);
 
-	set_tag(gd, tag, vstr);
+	set_pending_tag(gd, tag, vstr);
 
     return 0;
 }
@@ -761,6 +731,14 @@ int aac_set_tag_int_2(AACGainHandle gh, rg_tag_e tag, int p1, int p2)
 int aac_get_tag_int_2(AACGainHandle gh, rg_tag_e tag, int *p1, int *p2)
 {
     GainDataPtr gd = (GainDataPtr)gh;
+	if (gd->pending_tag_values[tag])
+	{
+		sscanf(gd->pending_tag_values[tag], "%d,%d", p1, p2);
+		return 0;
+	}
+	if (gd->clear_rg_tags)
+		return 1;
+
     MP4ItmfItem *item = find_metadata(gd, tag);
 	if (item)
     {
@@ -781,29 +759,21 @@ int aac_get_tag_int_2(AACGainHandle gh, rg_tag_e tag, int *p1, int *p2)
 int aac_clear_rg_tags(AACGainHandle gh)
 {
     GainDataPtr gd = (GainDataPtr)gh;
-    prepare_to_write(gd);
-    uint32_t i;
-
-    for (i=0; i<num_rg_tags; i++)
-    {
-        MP4ItmfItem *item = find_metadata(gd, (rg_tag_e)i);
-		if (item)
-		{
-			MP4ItmfRemoveItem(gd->mp4File, item);
-		}
-    }
+	gd->clear_rg_tags = 1;
+	gd->write_requested = 1;
 
     return 0;
 }
 
 static int fastcopy(const char *from, const char *to);
 
+// Finalizes deferred gain and tag changes, then atomically replaces the input.
 int aac_close(AACGainHandle gh)
 {
     GainDataPtr gd = (GainDataPtr)gh;
     int rc = 0;
     PreserveTimestampPtr pt = (PreserveTimestampPtr)gd->preserve_timestamp;
-    const char *temp_name = NULL;
+    char *temp_name = NULL;
 
     //close the faad decoder if open
     if (gd->hDecoder)
@@ -811,90 +781,63 @@ int aac_close(AACGainHandle gh)
         NeAACDecClose(gd->hDecoder);
     }
 
-    //delete the gain change linked list if present
-    while (gd->GainHead)
-    {
-        GainFixupPtr next = gd->GainHead->next;
-        free(gd->GainHead);
-        gd->GainHead = next;
-    }
-
     if (gd->mp4File)
-    {
-        if (gd->use_temp && gd->temp_name)
-            temp_name = temp_file_name(gd->mp4file_name);
-
         mp4_close(gd);
-    }
 
-    if (temp_name)
+    if (gd->write_requested && !gd->abort)
     {
-        if (!gd->abort)
+        temp_name = temp_file_name(gd->mp4file_name);
+
+        std::vector<MP4MetaFilePatch> patches;
+        if (gd->gain_modified)
         {
-            //use MP4Optimize to undo the wasted space created by MP4File::Modify
-            //send optimize output to a temp file "just in case"
-            if(MP4Optimize(gd->temp_name, temp_name)){
-                //rename the temp file back to original name
-                int rc = remove(gd->mp4file_name);
-                if (rc == 0)
-                    rc = rename(temp_name, gd->mp4file_name);
-		if (rc)
-                    rc = fastcopy(temp_name, gd->mp4file_name);
-		if (rc)
-		{
-                    FILE *inFile = fopen(temp_name, "rb");
-                    if (!inFile)
-                    {
-                        fprintf(stderr, "Error: unable to reopen file %s to create temporary file\n",
-                                temp_name);
-                        exit( 1 ) ;
-                    }
-
-                    FILE *outFile = fopen(gd->mp4file_name, "wb");
-                    if (!outFile)
-                    {
-                        fprintf(stderr, "Error: unable to reopen file %s to create temporary file\n",
-                                gd->mp4file_name);
-                        exit( 1 ) ;
-                    }
-
-                    //copy the original file to the temp file
-                    static const u_int32_t blockSize = (1024*1024);
-                    u_int8_t *buffer = new u_int8_t[blockSize];
-                    for (;;)
-                    {
-                        int bytesRead = fread(buffer, 1, blockSize, inFile);
-//                      printf( "bytesRead:%d\n" , bytesRead ) ;
-                        
-                        if (bytesRead)
-                            fwrite(buffer, 1, bytesRead, outFile);
-                        if (bytesRead < blockSize)
-                            break;
-                    }
-                    fclose(inFile);
-                    fclose(outFile);
-                    remove(temp_name);
-		    rc = 0;
-		}
-                if (rc)
-                    fprintf(stderr, "Error: attempt to create file %s failed. Your output file is named %s",
-                        gd->mp4file_name, temp_name);
+            for (GainFixupPtr gf = gd->GainHead; gf; gf = gf->next)
+            {
+                MP4MetaFilePatch patch;
+                patch.sampleId = gf->sampleId;
+                patch.byteOffset = gf->sample_offset;
+                patch.bitOffset = gf->bit_offset;
+                patch.value = (uint8_t)(gf->orig_gain +
+                    ((gf->channel == 0) ? gd->gain_left : gd->gain_right));
+                patches.push_back(patch);
             }
-            else{
-                //Optimize failed, keep the originals and remove temp files.
-                //The unoptimized temp file does not play in the app I tried it with, so you will not want it anyway.
-                fprintf(stderr, "Error: attempt to optimize file %s failed. The file was not modified.", gd->mp4file_name);
-                remove(temp_name); //Probably does not exist, but no harm in trying to remove it.
-            }
-            free((void*)temp_name);
         }
-        remove(gd->temp_name);
-        free((void*)gd->temp_name);
+
+        MP4MetaFile optimizedFile;
+        rc = optimizedFile.OptimizeWithPatches(
+            gd->mp4file_name,
+            temp_name,
+            gd->track,
+            patches.empty() ? NULL : &patches[0],
+            (uint32_t)patches.size(),
+            apply_pending_metadata,
+            gd) ? 0 : 1;
+
+        if (gd->itmfList)
+        {
+            MP4ItmfItemListFree((MP4ItmfItemList *)gd->itmfList);
+            gd->itmfList = NULL;
+        }
+        gd->mp4File = NULL;
+
+        if (rc == 0)
+        {
+            rc = rename(temp_name, gd->mp4file_name);
+            if (rc)
+                rc = fastcopy(temp_name, gd->mp4file_name);
+        }
+
+        if (rc)
+        {
+            fprintf(stderr, "Error: attempt to create file %s failed. The original file was kept.\n",
+                    gd->mp4file_name);
+            remove(temp_name);
+        }
     }
 
     if (pt)
     {
-        if (!gd->abort)
+        if (!gd->abort && rc == 0)
         {
 			struct utimbuf setTime;
 
@@ -904,6 +847,18 @@ int aac_close(AACGainHandle gh)
         }
         delete pt;
     }
+
+    while (gd->GainHead)
+    {
+        GainFixupPtr next = gd->GainHead->next;
+        free(gd->GainHead);
+        gd->GainHead = next;
+    }
+
+    for (uint32_t i = 0; i < num_rg_tags; i++)
+        free(gd->pending_tag_values[i]);
+
+    free(temp_name);
 
     free(gd->mp4file_name);
     delete gd;
@@ -916,7 +871,7 @@ int aac_close(AACGainHandle gh)
 static int fastcopy(const char *from, const char *to)
 {
         struct timespec ts[2];
-        static u_int blen = MAXPHYS;
+	static u_int blen = (1024 * 1024);
         static char *bp = NULL;
         mode_t oldmode;
         int nread, from_fd, to_fd;

@@ -25,11 +25,33 @@
 
 #include "src/impl.h" //in mp4v2
 
+class MP4MetaFile;
+
+// The callback updates metadata after the source has been parsed and before
+// the optimized output is written. The context is owned by the caller.
+typedef void (*MP4MetaFileMetadataCallback)(MP4MetaFile& file, void* context);
+
+// A patch replaces the AAC global_gain bits in one MP4 sample.
+// Example: {sampleId, 3, 0, newGain} changes one byte at sample offset 3.
+struct MP4MetaFilePatch
+{
+    MP4SampleId sampleId;
+    uint32_t byteOffset;
+    uint8_t bitOffset;
+    uint8_t value;
+};
+
 class MP4MetaFile : public mp4v2::impl::MP4File
 {
 public:
-    void ModifySampleByte(MP4TrackId trackId, MP4SampleId sampleId, uint8_t byte,
-                          uint32_t byteOffset, uint8_t bitOffset);
+    // Rewrites the source once, applying sample patches while each chunk is
+    // in memory. The source remains read-only until the caller replaces it.
+    bool OptimizeWithPatches(const char* srcFileName, const char* dstFileName,
+                             MP4TrackId trackId,
+                             const MP4MetaFilePatch* patches,
+                             uint32_t patchCount,
+                             MP4MetaFileMetadataCallback metadataCallback,
+                             void* metadataContext);
 };
 
 #endif //__MP4_META_FILE_H__

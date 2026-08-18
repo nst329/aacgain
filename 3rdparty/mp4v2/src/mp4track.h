@@ -154,6 +154,9 @@ public:
 
     MP4Timestamp GetChunkTime(MP4ChunkId chunkId);
 
+    // Returns the source-file offset used to locate patches in a chunk.
+    uint64_t GetChunkOffset(MP4ChunkId chunkId);
+
     void ReadChunk(MP4ChunkId chunkId,
                    uint8_t** ppChunk, uint32_t* pChunkSize);
 

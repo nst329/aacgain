@@ -1570,6 +1570,11 @@ uint32_t MP4Track::GetChunkSize(MP4ChunkId chunkId)
     return chunkSize;
 }
 
+uint64_t MP4Track::GetChunkOffset(MP4ChunkId chunkId)
+{
+    return m_pChunkOffsetProperty->GetValue(chunkId - 1);
+}
+
 void MP4Track::ReadChunk(MP4ChunkId chunkId,
                          uint8_t** ppChunk, uint32_t* pChunkSize)
 {

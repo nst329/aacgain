@@ -24,6 +24,10 @@
 
 typedef double decode_t;
 
+// Internal decoder sources do not include aacgain.h; keep this aligned with
+// the num_rg_tags enum used by the public AAC interface.
+#define AACGAIN_PENDING_TAG_COUNT 7
+
 typedef struct GainFixup
 {
     struct GainFixup *next;
@@ -37,7 +41,6 @@ typedef struct GainFixup
 typedef struct GainData
 {
     char *mp4file_name;
-    char *temp_name;
 	void *mp4File;
 	void *itmfList;
     void *hDecoder;
@@ -46,7 +49,10 @@ typedef struct GainData
     unsigned long samplerate;
     unsigned char channels;
     int gain_read, abort;
-    int analyze, use_temp, open_for_write;
+    int analyze;
+    int write_requested, clear_rg_tags, gain_modified;
+    int gain_left, gain_right;
+    char *pending_tag_values[AACGAIN_PENDING_TAG_COUNT];
     unsigned long sampleId;
     GainFixupPtr GainHead, GainTail;
     decode_t peak;
