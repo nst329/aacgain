@@ -35,7 +35,7 @@ private:
     enum FileLongCode {
         LC_LIST = _LC_MAX,
         LC_OPTIMIZE,
-        LC_DUMP,
+        LC_DUMP
     };
 
 public:
@@ -43,7 +43,7 @@ public:
 
 protected:
     // delegates implementation
-    bool utility_option( uint32_t, bool& );
+    bool utility_option( int, bool& );
     bool utility_job( JobContext& );
 
 private:
@@ -136,7 +136,7 @@ FileUtility::actionList( JobContext& job )
     {
         const FileSummaryInfo::BrandSet::iterator ie = info.compatible_brands.end();
         int count = 0;
-        for( FileSummaryInfo::BrandSet::iterator it = info.compatible_brands.begin(); it != ie; it++, count++ ) {
+        for( FileSummaryInfo::BrandSet::iterator it = info.compatible_brands.begin(); it != ie; ++it, count++ ) {
             if( count > 0 )
                 compat += ',';
             compat += *it;
@@ -185,7 +185,7 @@ FileUtility::utility_job( JobContext& job )
 ///////////////////////////////////////////////////////////////////////////////
 
 bool
-FileUtility::utility_option( uint32_t code, bool& handled )
+FileUtility::utility_option( int code, bool& handled )
 {
     handled = true;
 

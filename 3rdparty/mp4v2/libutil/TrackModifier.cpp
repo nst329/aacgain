@@ -122,6 +122,7 @@ TrackModifier::fetch()
         uint32_t size;
         _props.userDataName->GetValue( &buffer, &size );
         _userDataName = string( reinterpret_cast<char*>(buffer), size );
+        _userDataName.resize( strlen( _userDataName.c_str() ) );
     }
     else {
         _userDataName.clear();
@@ -143,7 +144,7 @@ TrackModifier::fromString( const string& src, bool& dst )
         if( iss.rdstate() != ios::eofbit ) {
             ostringstream oss;
             oss << "invalid value: " << src;
-            throw new Exception( oss.str(), __FILE__, __LINE__, __FUNCTION__ );
+            throw new EXCEPTION(oss.str());
         }
     }
 
@@ -160,7 +161,7 @@ TrackModifier::fromString( const string& src, float& dst )
     if( iss.rdstate() != ios::eofbit ) {
         ostringstream oss;
         oss << "invalid value: " << src;
-        throw new Exception( oss.str(), __FILE__, __LINE__, __FUNCTION__ );
+        throw new EXCEPTION(oss.str());
     }
 
     return dst;
@@ -176,7 +177,7 @@ TrackModifier::fromString( const string& src, uint16_t& dst )
     if( iss.rdstate() != ios::eofbit ) { 
         ostringstream oss;
         oss << "invalid value: " << src;
-        throw new Exception( oss.str(), __FILE__, __LINE__, __FUNCTION__ );
+        throw new EXCEPTION(oss.str());
     }   
 
     return dst;
@@ -203,7 +204,7 @@ TrackModifier::refTrackAtom( MP4File& file, uint16_t index )
     if( !trak ) {
         oss.str( "" );
         oss << "trackIndex " << index << " not found";
-        throw new Exception( oss.str(), __FILE__, __LINE__, __FUNCTION__ );
+        throw new EXCEPTION(oss.str());
     }
 
     return *trak;
@@ -474,7 +475,7 @@ TrackModifier::Properties::refProperty( const char* name )
     if( !_trackModifier._track.FindProperty( name, &property )) {
         ostringstream oss;
         oss << "trackId " << _trackModifier.trackId << " property '" << name << "' not found";
-        throw new Exception( oss.str(), __FILE__, __LINE__, __FUNCTION__ );
+        throw new EXCEPTION(oss.str());
     }
 
     return *property;

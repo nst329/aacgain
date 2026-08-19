@@ -2589,7 +2589,7 @@ static uint32_t latmAudioMuxElement(latm_header *latm, bitfile *ld)
         y1 = faad_get_processed_bits(ld);
         if((y1-x1) <= MAX_ASC_BYTES*8)
         {
-            faad_rewindbits(ld);
+            faad_initbits(ld, ld->buffer, ld->buffer_size);
             m = x1;
             while(m>0)
             {

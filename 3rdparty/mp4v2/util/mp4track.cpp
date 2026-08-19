@@ -70,7 +70,7 @@ private:
         LC_PASP_LIST,
         LC_PASP_ADD,
         LC_PASP_SET,
-        LC_PASP_REMOVE,
+        LC_PASP_REMOVE
     };
 
 public:
@@ -78,7 +78,7 @@ public:
 
 protected:
     // delegates implementation
-    bool utility_option( uint32_t, bool& );
+    bool utility_option( int, bool& );
     bool utility_job( JobContext& );
 
 private:
@@ -103,14 +103,7 @@ private:
         TM_UNDEFINED,
         TM_INDEX,
         TM_ID,
-        TM_WILDCARD,
-    };
-
-    enum SampleMode {
-        SM_UNDEFINED,
-        SM_INDEX,
-        SM_ID,
-        SM_WILDCARD,
+        TM_WILDCARD
     };
 
     Group _actionGroup;
@@ -121,10 +114,6 @@ private:
     TrackMode _trackMode;
     uint16_t  _trackIndex;
     uint32_t  _trackId;
-
-    SampleMode _sampleMode;
-    uint16_t   _sampleIndex;
-    uint32_t   _sampleId;
 
     qtff::ColorParameterBox::Item     _colorParameterItem;
     qtff::PictureAspectRatioBox::Item _pictureAspectRatioItem;
@@ -139,7 +128,7 @@ private:
 
 ///////////////////////////////////////////////////////////////////////////////
 
-string toStringTrackType( string );
+string toStringTrackType( const string& );
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -151,9 +140,6 @@ TrackUtility::TrackUtility( int argc, char** argv )
     , _trackMode   ( TM_UNDEFINED )
     , _trackIndex  ( 0 )
     , _trackId     ( MP4_INVALID_TRACK_ID )
-    , _sampleMode  ( SM_UNDEFINED )
-    , _sampleIndex ( 0 )
-    , _sampleId    ( MP4_INVALID_SAMPLE_ID )
 {
     // add standard options which make sense for this utility
     _group.add( STD_OPTIMIZE );
@@ -439,8 +425,6 @@ TrackUtility::actionList( JobContext& job )
 {
     if( _jobTotal > 1 )
         verbose1f( "file %u of %u: %s\n", _jobCount+1, _jobTotal, job.file.c_str() );
-
-    ostringstream report;
 
     job.fileHandle = MP4Read( job.file.c_str() );
     if( job.fileHandle == MP4_INVALID_FILE_HANDLE )
@@ -784,7 +768,7 @@ TrackUtility::utility_job( JobContext& job )
 ///////////////////////////////////////////////////////////////////////////////
 
 bool
-TrackUtility::utility_option( uint32_t code, bool& handled )
+TrackUtility::utility_option( int code, bool& handled )
 {
     handled = true;
 
@@ -963,7 +947,7 @@ TrackUtility::utility_option( uint32_t code, bool& handled )
 ///////////////////////////////////////////////////////////////////////////////
 
 string
-toStringTrackType( string code )
+toStringTrackType( const string& code )
 {
     if( !code.compare( "vide" ))    // 14496-12
         return "video";
