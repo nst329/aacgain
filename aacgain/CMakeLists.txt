@@ -6,7 +6,6 @@ target_include_directories(aacgain PRIVATE
                            "${CMAKE_CURRENT_SOURCE_DIR}"
                            "${PROJECT_SOURCE_DIR}/mp3gain"
                            "${PROJECT_SOURCE_DIR}/aacgain"
-			   "${PROJECT_BINARY_DIR}/3rdparty/include"
                            "${PROJECT_SOURCE_DIR}/3rdparty/mp4v2"
                            "${PROJECT_SOURCE_DIR}/3rdparty/faad2/libfaad"
 # These two exist on UNIX but paths are needed on Windows
@@ -22,7 +21,7 @@ target_link_libraries(aacgain PRIVATE
                       faad2
                       mp4v2
                      )
-add_dependencies(aacgain faad2_proj mp4v2_proj)
+add_dependencies(aacgain faad mp4v2)
 IF(UNIX)
 target_compile_options(aacgain PRIVATE -Wall -Wextra)
 ENDIF(UNIX)

@@ -1,64 +1,15 @@
-include(ExternalProject)
-
-IF(UNIX)
-include(ProcessorCount)
-ProcessorCount(N)
-
-if(CMAKE_MAKE_PROGRAM)
-    set(AACGAIN_EXTERNAL_MAKE "${CMAKE_MAKE_PROGRAM}")
-else()
-    set(AACGAIN_EXTERNAL_MAKE make)
+if(NOT UNIX)
+    message(FATAL_ERROR "最新の依存関係ビルドはmacOSとFreeBSDを対象にしています。")
 endif()
 
-ExternalProject_Add(faad2_proj
-                    SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/faad2"
-                    CONFIGURE_COMMAND autoreconf -i && ./configure --prefix=${CMAKE_CURRENT_BINARY_DIR} --disable-shared --enable-static CXXFLAGS=${CMAKE_CXX_FLAGS_RELEASE} CFLAGS=${CMAKE_C_FLAGS_RELEASE}
-                    BUILD_COMMAND ${AACGAIN_EXTERNAL_MAKE} -j ${N}
-                    INSTALL_COMMAND ${AACGAIN_EXTERNAL_MAKE} -j ${N} install
-                    BUILD_IN_SOURCE 1
-                   )
+# Build the bundled dependencies as CMake targets so their generated headers
+# and static libraries are consumed directly by AACGain.
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(FAAD_BUNDLED_MODE ON CACHE BOOL "" FORCE)
+set(FAAD_BUILD_CLI OFF CACHE BOOL "" FORCE)
+add_subdirectory(faad2 faad2-build EXCLUDE_FROM_ALL)
 
-ExternalProject_Add(mp4v2_proj
-                    SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/mp4v2"
-                    CONFIGURE_COMMAND autoreconf -i && ./configure --prefix=${CMAKE_CURRENT_BINARY_DIR} --disable-shared --enable-static CXXFLAGS=${CMAKE_CXX_FLAGS_RELEASE} CFLAGS=${CMAKE_C_FLAGS_RELEASE}
-                    BUILD_COMMAND ${AACGAIN_EXTERNAL_MAKE} -j ${N}
-                    INSTALL_COMMAND ${AACGAIN_EXTERNAL_MAKE} -j ${N} install
-                    BUILD_IN_SOURCE 1
-                   )
+set(BUILD_SHARED OFF CACHE BOOL "" FORCE)
+add_subdirectory(mp4v2 mp4v2-build EXCLUDE_FROM_ALL)
 
-set(PREFIX_CLEAN_DIRS bin include lib share)
-set_directory_properties(PROPERTIES ADDITIONAL_CLEAN_FILES "${PREFIX_CLEAN_DIRS}")
-ENDIF(UNIX)
-
-IF(WIN32)
-ExternalProject_Add(faad2_proj
-	SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/faad2"
-		    CONFIGURE_COMMAND ""
-		    BUILD_COMMAND msbuild project/msvc/faad2.sln -t:libfaad -p:Configuration=Release -p:Platform=x64 -maxcpucount
-		    INSTALL_COMMAND ""
-		    BUILD_IN_SOURCE 1
-		   )
-ExternalProject_Add(mp4v2_proj
-		    SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/mp4v2"
-		    CONFIGURE_COMMAND ""
-		    BUILD_COMMAND msbuild mp4v2-Win/mp4v2.sln -t:libmp4v2 -p:Configuration=Release -p:Platform=x64 -maxcpucount
-		    INSTALL_COMMAND ""
-		    BUILD_IN_SOURCE 1
-		   )
-ENDIF(WIN32)
-
-add_library(faad2 STATIC IMPORTED GLOBAL)
-add_library(mp4v2 STATIC IMPORTED GLOBAL)
-
-IF(UNIX)
-set(FAAD_LIB_PATH "${CMAKE_CURRENT_BINARY_DIR}/lib/libfaad.a")
-set(MP4V2_LIB_PATH "${CMAKE_CURRENT_BINARY_DIR}/lib/libmp4v2.a")
-ENDIF(UNIX)
-
-if(WIN32)
-set(FAAD_LIB_PATH "${PROJECT_SOURCE_DIR}/3rdparty/faad2/project/msvc/x64/Release/libfaad.lib")
-set(MP4V2_LIB_PATH "${PROJECT_SOURCE_DIR}/3rdparty/mp4v2/mp4v2-Win/bin/x64/Release/libmp4v2.lib")
-ENDIF(WIN32)
-
-set_target_properties(faad2 PROPERTIES IMPORTED_LOCATION "${FAAD_LIB_PATH}")
-set_target_properties(mp4v2 PROPERTIES IMPORTED_LOCATION "${MP4V2_LIB_PATH}")
+add_library(faad2 ALIAS faad)

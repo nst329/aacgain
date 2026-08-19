@@ -19,20 +19,18 @@ OS_NAME=$(uname -s)
 case "$OS_NAME" in
     Darwin)
         MAKE_PROGRAM=$(command -v make) || die "make が見つかりません。"
-        TOOLIZE=glibtoolize
-        INSTALL_HINT="brew install cmake autoconf automake libtool"
+        INSTALL_HINT="brew install cmake"
         ;;
     FreeBSD)
         MAKE_PROGRAM=$(command -v gmake) || die "gmake が見つかりません。pkg install gmake を実行してください。"
-        TOOLIZE=libtoolize
-        INSTALL_HINT="pkg install cmake autoconf automake libtool gmake git"
+        INSTALL_HINT="pkg install cmake gmake git"
         ;;
     *)
         die "対応OSはmacOSとFreeBSDです: $OS_NAME"
         ;;
 esac
 
-for command_name in cmake git autoreconf automake "$TOOLIZE"; do
+for command_name in cmake git; do
     if ! command -v "$command_name" >/dev/null 2>&1; then
         die "'$command_name' が見つかりません。推奨コマンド: $INSTALL_HINT"
     fi
@@ -40,29 +38,12 @@ done
 
 cd "$PROJECT_DIR"
 
-if [ ! -f 3rdparty/faad2/configure.ac ]; then
+if [ ! -f 3rdparty/faad2/CMakeLists.txt ]; then
     echo "faad2サブモジュールを取得します..."
     git submodule update --init --recursive 3rdparty/faad2
 fi
 
-[ -f 3rdparty/faad2/configure.ac ] || die "3rdparty/faad2を取得できませんでした。"
-
-reset_external_project_if_stale()
-{
-    project_name=$1
-    project_makefile=$2
-    stamp_dir="$BUILD_DIR/3rdparty/${project_name}_proj-prefix/src/${project_name}_proj-stamp"
-
-    if [ ! -f "$project_makefile" ]; then
-        rm -f "$stamp_dir/${project_name}_proj-configure" \
-            "$stamp_dir/${project_name}_proj-build" \
-            "$stamp_dir/${project_name}_proj-install" \
-            "$stamp_dir/${project_name}_proj-done"
-    fi
-}
-
-reset_external_project_if_stale faad2 3rdparty/faad2/Makefile
-reset_external_project_if_stale mp4v2 3rdparty/mp4v2/config.status
+[ -f 3rdparty/faad2/CMakeLists.txt ] || die "3rdparty/faad2を取得できませんでした。"
 
 case "$OS_NAME" in
     Darwin)

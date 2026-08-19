@@ -82,8 +82,17 @@ void MP4RootAtom::FinishWrite(bool use64)
     }
 
     // finish writing last mdat atom
-    const uint32_t mdatIndex = GetLastMdatIndex();
-    m_pChildAtoms[mdatIndex]->FinishWrite( m_File.Use64Bits( "mdat" ));
+    uint32_t mdatIndex = GetLastMdatIndex();
+    MP4Atom* pLastMdat = m_pChildAtoms[mdatIndex];
+    pLastMdat->FinishWrite( m_File.Use64Bits( "mdat" ));
+
+    // remove mdat atom if empty
+    if (pLastMdat->GetSize() == 0) {
+        m_File.SetPosition(pLastMdat->GetStart());
+        DeleteChildAtom(pLastMdat);
+        delete pLastMdat;
+        mdatIndex--;
+    }
 
     // write all atoms after last mdat
     const uint32_t size = m_pChildAtoms.Size();
@@ -111,7 +120,7 @@ void MP4RootAtom::FinishOptimalWrite()
 
     uint32_t i;
     for (i = 0; i < size; i++) {
-        if (!strcmp("moov", m_pChildAtoms[i]->GetType())) {
+        if (strequal("moov", m_pChildAtoms[i]->GetType())) {
             pMoovAtom = m_pChildAtoms[i];
             break;
         }
@@ -133,7 +142,7 @@ void MP4RootAtom::FinishOptimalWrite()
 uint32_t MP4RootAtom::GetLastMdatIndex()
 {
     for (int32_t i = m_pChildAtoms.Size() - 1; i >= 0; i--) {
-        if (!strcmp("mdat", m_pChildAtoms[i]->GetType())) {
+        if (strequal("mdat", m_pChildAtoms[i]->GetType())) {
             return i;
         }
     }
@@ -146,7 +155,7 @@ void MP4RootAtom::WriteAtomType(const char* type, bool onlyOne)
     uint32_t size = m_pChildAtoms.Size();
 
     for (uint32_t i = 0; i < size; i++) {
-        if (!strcmp(type, m_pChildAtoms[i]->GetType())) {
+        if (strequal(type, m_pChildAtoms[i]->GetType())) {
             m_pChildAtoms[i]->Write();
             if (onlyOne) {
                 break;

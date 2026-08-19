@@ -90,15 +90,14 @@ DOXYGEN.cmd = $(DOXYGEN) $(1)
 DOC.m4.out = \
     doc/texi/base/project.texi \
     doc/doxygen/Doxyfile       \
-    doc/doxygen/header.html    \
     doc/doxygen/footer.html    \
     doc/html/header.html       \
     doc/html/footer.html
 
-DOC.man.utils = mp4art mp4file mp4subtitle mp4track
+DOC.man.utils = mp4art mp4chaps mp4file mp4subtitle mp4tags mp4track
 DOC.man.out   = $(DOC.man.utils:%=$(DOC.out/)man/man1/%.1)
 
-DOC.texi.articles = $(wildcard $(DOC.in/)texi/*.texi $(DOC.out/)texi/*.texi)
+DOC.texi.articles = $(wildcard $(DOC.in/)texi/*.texi)
 
 DOC.texi.includes = \
     doc/texi/base/project.texi \
@@ -123,16 +122,27 @@ DOC.site.out.html  = $(patsubst $(DOC.out.articles/)html/%,$(DOC.out.site/)%, \
 
 MKDIRS += $(dir $(DOC.m4.out))
 MKDIRS += $(DOC.out/)man/man1/
-MKDIRS += $(foreach n,html man texi txt wiki xml,$(DOC.out.articles/)$n)
+MKDIRS += $(foreach n,html man texi txt wiki xml,$(DOC.out.articles/)$n/)
 MKDIRS += $(DOC.out.api/)
 MKDIRS += $(DOC.out.site/)
 
 ###############################################################################
 
 EXTRA_DIST += \
-    $(SOURCE/)vstudio9.0/include/mp4v2/project.h \
-    $(SOURCE/)vstudio9.0/mp4v2.sln \
-    $(wildcard $(SOURCE/)vstudio9.0/*/*.vcproj)
+    $(SOURCE/)CMakeLists.txt \
+    $(SOURCE/)libplatform/config.h.cmake \
+    $(wildcard $(SOURCE/)example/**/*.c) \
+    $(wildcard $(SOURCE/)testsuite/**/*.exp) \
+    $(SOURCE/)vstudio/mp4v2.sln \
+    $(SOURCE/)vstudio/include/mp4v2/project.h \
+    $(wildcard $(SOURCE/)vstudio/*/*.natvis) \
+    $(wildcard $(SOURCE/)vstudio/*/*.rc) \
+    $(wildcard $(SOURCE/)vstudio/*/*.vcxproj) \
+    $(wildcard $(SOURCE/)vstudio/*/*.vcxproj.filters) \
+    $(SOURCE/)xcode/include/libplatform/config.h \
+    $(SOURCE/)xcode/include/mp4v2/project.h \
+    $(SOURCE/)xcode/mp4v2.xcodeproj/project.pbxproj \
+    $(SOURCE/)xcode/mp4v2.xcodeproj/project.xcworkspace/contents.xcworkspacedata
 
 ###############################################################################
 
@@ -220,13 +230,10 @@ $(DOC.xml2wiki.out): $(DOC.out.articles/)wiki/%.wiki: $(DOC.out.articles/)xml/%.
 	$(call XML2WIKI.cmd,$<,$@)
 
 $(DOC.api.out): | $(dir $(DOC.api.out))
-$(DOC.api.out): $(DOC.in/)doxygen/banner.png
 $(DOC.api.out): $(DOC.in/)doxygen/project.css
-$(DOC.api.out): $(DOC.out/)doxygen/header.html
 $(DOC.api.out): $(DOC.out/)doxygen/footer.html
 $(DOC.api.out): $(DOC.out/)doxygen/Doxyfile
 	$(call DOXYGEN.cmd,$<)
-	$(INSTALL_DATA) $(DOC.in/)doxygen/banner.png $(DOC.out.api/)html/
 	touch $@
 
 ###############################################################################
@@ -384,4 +391,4 @@ clean-local:
 ###############################################################################
 
 $(sort $(MKDIRS)):
-	$(mkdir_p) $@
+	$(mkdir_p) $(sort $(MKDIRS))

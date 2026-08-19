@@ -46,7 +46,7 @@ static MP4File  *ConstructMP4File ( void )
     try {
         pFile = new MP4File();
     }
-    catch( std::bad_alloc ) {
+    catch( const std::bad_alloc& ) {
         mp4v2::impl::log.errorf("%s: unable to allocate MP4File", __FUNCTION__);
     }
     catch( Exception* x ) {
@@ -89,31 +89,7 @@ const char* MP4GetFilename( MP4FileHandle hFile )
 
 MP4FileHandle MP4Read( const char* fileName )
 {
-    if (!fileName)
-        return MP4_INVALID_FILE_HANDLE;
-
-    MP4File *pFile = ConstructMP4File();
-    if (!pFile)
-        return MP4_INVALID_FILE_HANDLE;
-
-    try
-    {
-        ASSERT(pFile);
-        pFile->Read( fileName, NULL );
-        return (MP4FileHandle)pFile;
-    }
-    catch( Exception* x ) {
-        mp4v2::impl::log.errorf(*x);
-        delete x;
-    }
-    catch( ... ) {
-        mp4v2::impl::log.errorf("%s: \"%s\": failed", __FUNCTION__,
-                                fileName );
-    }
-
-    if (pFile)
-        delete pFile;
-    return MP4_INVALID_FILE_HANDLE;
+    return MP4ReadProvider( fileName, NULL );
 }
 
 MP4FileHandle MP4ReadProvider( const char* fileName, const MP4FileProvider* fileProvider )
@@ -126,7 +102,7 @@ MP4FileHandle MP4ReadProvider( const char* fileName, const MP4FileProvider* file
         return MP4_INVALID_FILE_HANDLE;
 
     try {
-        pFile->Read( fileName, fileProvider );
+        pFile->Read( fileName, fileProvider, NULL, NULL );
         return (MP4FileHandle)pFile;
     }
     catch( Exception* x ) {
@@ -138,86 +114,186 @@ MP4FileHandle MP4ReadProvider( const char* fileName, const MP4FileProvider* file
                                 fileName );
     }
 
-    if (pFile)
-        delete pFile;
+    delete pFile;
+    return MP4_INVALID_FILE_HANDLE;
+}
+
+MP4FileHandle MP4ReadCallbacks( const MP4IOCallbacks* callbacks, void* handle )
+{
+    if (!callbacks)
+        return MP4_INVALID_FILE_HANDLE;
+
+    MP4File *pFile = ConstructMP4File();
+    if (!pFile)
+        return MP4_INVALID_FILE_HANDLE;
+
+    try {
+        pFile->Read( NULL, NULL, callbacks, handle );
+        return (MP4FileHandle)pFile;
+    }
+    catch( Exception* x ) {
+        mp4v2::impl::log.errorf(*x);
+        delete x;
+    }
+    catch( ... ) {
+        mp4v2::impl::log.errorf("%s: failed", __FUNCTION__ );
+    }
+
+    delete pFile;
     return MP4_INVALID_FILE_HANDLE;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 
-    MP4FileHandle MP4Create (const char* fileName,
-                             uint32_t  flags)
-    {
-        return MP4CreateEx(fileName, flags);
+MP4FileHandle MP4Create (const char* fileName,
+                         uint32_t flags)
+{
+    return MP4CreateEx(fileName, flags);
+}
+
+MP4FileHandle MP4CreateEx (const char* fileName,
+                           uint32_t flags,
+                           int add_ftyp,
+                           int add_iods,
+                           char* majorBrand,
+                           uint32_t minorVersion,
+                           char** supportedBrands,
+                           uint32_t supportedBrandsCount)
+{
+    if (!fileName)
+        return MP4_INVALID_FILE_HANDLE;
+
+    MP4File* pFile = ConstructMP4File();
+    if (!pFile)
+        return MP4_INVALID_FILE_HANDLE;
+
+    try {
+        // LATER useExtensibleFormat, moov first, then mvex's
+        pFile->Create(fileName, NULL,
+                      NULL, flags,
+                      add_ftyp, add_iods,
+                      majorBrand, minorVersion,
+                      supportedBrands, supportedBrandsCount);
+        return (MP4FileHandle)pFile;
+    }
+    catch( Exception* x ) {
+        mp4v2::impl::log.errorf(*x);
+        delete x;
+    }
+    catch( ... ) {
+        mp4v2::impl::log.errorf("%s: \"%s\": failed", __FUNCTION__,
+                                fileName );
     }
 
-    MP4FileHandle MP4CreateEx (const char* fileName,
-                               uint32_t  flags,
-                               int add_ftyp,
-                               int add_iods,
-                               char* majorBrand,
-                               uint32_t minorVersion,
-                               char** supportedBrands,
-                               uint32_t supportedBrandsCount)
-    {
-        if (!fileName)
-            return MP4_INVALID_FILE_HANDLE;
+    delete pFile;
+    return MP4_INVALID_FILE_HANDLE;
+}
 
-        MP4File* pFile = ConstructMP4File();
-        if (!pFile)
-            return MP4_INVALID_FILE_HANDLE;
+MP4FileHandle MP4CreateCallbacks (const MP4IOCallbacks* callbacks,
+                                  void* handle,
+                                  uint32_t flags)
+{
+    return MP4CreateCallbacksEx(callbacks, handle, flags);
+}
 
-        try {
-            ASSERT(pFile);
-            // LATER useExtensibleFormat, moov first, then mvex's
-            pFile->Create(fileName, flags, add_ftyp, add_iods,
-                          majorBrand, minorVersion,
-                          supportedBrands, supportedBrandsCount);
+MP4FileHandle MP4CreateCallbacksEx (const MP4IOCallbacks* callbacks,
+                                    void* handle,
+                                    uint32_t flags,
+                                    int add_ftyp,
+                                    int add_iods,
+                                    char* majorBrand,
+                                    uint32_t minorVersion,
+                                    char** supportedBrands,
+                                    uint32_t supportedBrandsCount)
+{
+    if (!callbacks)
+        return MP4_INVALID_FILE_HANDLE;
+
+    MP4File* pFile = ConstructMP4File();
+    if (!pFile)
+        return MP4_INVALID_FILE_HANDLE;
+
+    try {
+        // LATER useExtensibleFormat, moov first, then mvex's
+        pFile->Create(NULL, callbacks,
+                      handle, flags,
+                      add_ftyp, add_iods,
+                      majorBrand, minorVersion,
+                      supportedBrands, supportedBrandsCount);
+        return (MP4FileHandle)pFile;
+    }
+    catch( Exception* x ) {
+        mp4v2::impl::log.errorf(*x);
+        delete x;
+    }
+    catch( ... ) {
+        mp4v2::impl::log.errorf("%s: failed", __FUNCTION__ );
+    }
+
+    delete pFile;
+    return MP4_INVALID_FILE_HANDLE;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+MP4FileHandle MP4Modify(const char* fileName,
+                        uint32_t flags)
+{
+    if (!fileName)
+        return MP4_INVALID_FILE_HANDLE;
+
+    MP4File* pFile = ConstructMP4File();
+    if (!pFile)
+        return MP4_INVALID_FILE_HANDLE;
+
+    try {
+        ASSERT(pFile);
+        // LATER useExtensibleFormat, moov first, then mvex's
+        if (pFile->Modify(fileName, NULL, NULL))
             return (MP4FileHandle)pFile;
-        }
-        catch( Exception* x ) {
-            mp4v2::impl::log.errorf(*x);
-            delete x;
-        }
-        catch( ... ) {
-            mp4v2::impl::log.errorf("%s: \"%s\": failed", __FUNCTION__,
-                                    fileName );
-        }
-
-        if (pFile)
-            delete pFile;
-        return MP4_INVALID_FILE_HANDLE;
+    }
+    catch( Exception* x ) {
+        mp4v2::impl::log.errorf(*x);
+        delete x;
+    }
+    catch( ... ) {
+        mp4v2::impl::log.errorf("%s: \"%s\": failed", __FUNCTION__,
+                                fileName );
     }
 
-    MP4FileHandle MP4Modify(const char* fileName,
-                            uint32_t flags)
-    {
-        if (!fileName)
-            return MP4_INVALID_FILE_HANDLE;
+    delete pFile;
+    return MP4_INVALID_FILE_HANDLE;
+}
 
-        MP4File* pFile = ConstructMP4File();
-        if (!pFile)
-            return MP4_INVALID_FILE_HANDLE;
-
-        try {
-            ASSERT(pFile);
-            // LATER useExtensibleFormat, moov first, then mvex's
-            if (pFile->Modify(fileName))
-                return (MP4FileHandle)pFile;
-        }
-        catch( Exception* x ) {
-            mp4v2::impl::log.errorf(*x);
-            delete x;
-        }
-        catch( ... ) {
-            mp4v2::impl::log.errorf("%s: \"%s\": failed", __FUNCTION__,
-                                    fileName );
-        }
-
-        if (pFile)
-            delete pFile;
+MP4FileHandle MP4ModifyCallbacks(const MP4IOCallbacks* callbacks,
+                                 void* handle,
+                                 uint32_t flags)
+{
+    if (!callbacks)
         return MP4_INVALID_FILE_HANDLE;
+
+    MP4File* pFile = ConstructMP4File();
+    if (!pFile)
+        return MP4_INVALID_FILE_HANDLE;
+
+    try {
+        ASSERT(pFile);
+        // LATER useExtensibleFormat, moov first, then mvex's
+        if (pFile->Modify(NULL, callbacks,
+                          handle))
+            return (MP4FileHandle)pFile;
     }
+    catch( Exception* x ) {
+        mp4v2::impl::log.errorf(*x);
+        delete x;
+    }
+    catch( ... ) {
+        mp4v2::impl::log.errorf("%s: failed", __FUNCTION__ );
+    }
+
+    delete pFile;
+    return MP4_INVALID_FILE_HANDLE;
+}
 
     bool MP4Optimize(const char* fileName,
                      const char* newFileName)
@@ -246,8 +322,7 @@ MP4FileHandle MP4ReadProvider( const char* fileName, const MP4FileProvider* file
                                     fileName, newFileName );
         }
 
-        if (pFile)
-            delete pFile;
+        delete pFile;
         return false;
     }
 
@@ -440,7 +515,7 @@ MP4FileHandle MP4ReadProvider( const char* fileName, const MP4FileProvider* file
                                                    &foo,
                                                    &bufsize)) {
                         uint8_t *ptr = foo;
-                        while (bufsize > 0) {
+                        while (bufsize >= 5) {
                             if (MP4V2_HTONL(*(uint32_t *)ptr) == 0x1b0) {
                                 uint8_t ret = ptr[4];
                                 free(foo);
@@ -1107,34 +1182,6 @@ MP4FileHandle MP4ReadProvider( const char* fileName, const MP4FileProvider* file
         }
         return MP4_INVALID_TRACK_ID;
     }
-
-    MP4TrackId MP4AddTSC2VideoTrack(
-        MP4FileHandle hFile,
-        uint32_t timeScale,
-        MP4Duration sampleDuration,
-        uint16_t width,
-        uint16_t height)
-    {
-        if (MP4_IS_VALID_FILE_HANDLE(hFile)) {
-            try {
-                MP4File *pFile = (MP4File *)hFile;
-
-                return pFile->AddTSC2VideoTrack(timeScale,
-                                                sampleDuration,
-                                                width,
-                                                height);
-            }
-            catch( Exception* x ) {
-                mp4v2::impl::log.errorf(*x);
-                delete x;
-            }
-            catch( ... ) {
-                mp4v2::impl::log.errorf( "%s: failed", __FUNCTION__ );
-            }
-        }
-        return MP4_INVALID_TRACK_ID;
-    }
-
 
     MP4TrackId MP4AddEncVideoTrack(MP4FileHandle hFile,
                                    uint32_t timeScale,
@@ -2562,7 +2609,7 @@ MP4FileHandle MP4ReadProvider( const char* fileName, const MP4FileProvider* file
         }
         return false;
     }
-   
+
     void MP4FreeH264SeqPictHeaders(uint8_t** pSeqHeaders,
                                    uint32_t* pSeqHeaderSize,
                                    uint8_t** pPictHeader,
@@ -2653,13 +2700,39 @@ MP4FileHandle MP4ReadProvider( const char* fileName, const MP4FileProvider* file
         MP4FileHandle hFile, MP4TrackId trackId)
     {
         if (MP4_IS_VALID_FILE_HANDLE(hFile)) {
+            // H.264 MP4s will typically have width & height stored in
+            // the mdia.minf.stbl.stsd.avc1 atom. For MOVs, it varies.
+            // For H.264 MOVs from Apple devices, it is the same as H.264
+            // MP4. For PNG MOVs, mdia.minf.stbl.stsd.png contain the
+            // width and height. For ProRes MOVs, there are various atoms
+            // that I don't think are publicly documented,
+            // mdia.minf.stbl.stsd.apcn for example. So when we don't
+            // find the width/height where we expect, we'll just go with
+            // what's in the tkhd atom.
             try {
                 return ((MP4File*)hFile)->GetTrackIntegerProperty(trackId,
                         "mdia.minf.stbl.stsd.*.width");
             }
             catch( Exception* x ) {
                 mp4v2::impl::log.errorf(*x);
+                bool missingProperty = ( x->what.substr( 0, 16 ) == "no such property" );
                 delete x;
+                if ( missingProperty )
+                {
+                   try
+                   {
+                      return ( (MP4File*)hFile )->GetTrackFloatProperty( trackId, "tkhd.width" );
+                   }
+                   catch ( Exception *xx )
+                   {
+                      mp4v2::impl::log.errorf( *xx );
+                      delete xx;
+                   }
+                   catch ( ... )
+                   {
+                      mp4v2::impl::log.errorf( "%s: failed", __FUNCTION__ );
+                   }
+                }
             }
             catch( ... ) {
                 mp4v2::impl::log.errorf( "%s: failed", __FUNCTION__ );
@@ -2678,7 +2751,26 @@ MP4FileHandle MP4ReadProvider( const char* fileName, const MP4FileProvider* file
             }
             catch( Exception* x ) {
                 mp4v2::impl::log.errorf(*x);
+                bool missingProperty = ( x->what.substr( 0, 16 ) == "no such property" );
                 delete x;
+
+                // See notes above in MP4GetTrackVideoWidth()
+                if ( missingProperty )
+                {
+                   try
+                   {
+                      return ( (MP4File*)hFile )->GetTrackFloatProperty( trackId, "tkhd.height" );
+                   }
+                   catch ( Exception *xx )
+                   {
+                      mp4v2::impl::log.errorf( *xx );
+                      delete xx;
+                   }
+                   catch ( ... )
+                   {
+                      mp4v2::impl::log.errorf( "%s: failed", __FUNCTION__ );
+                   }
+                }
             }
             catch( ... ) {
                 mp4v2::impl::log.errorf( "%s: failed", __FUNCTION__ );
@@ -2769,29 +2861,6 @@ MP4FileHandle MP4ReadProvider( const char* fileName, const MP4FileProvider* file
         return false;
     }
 
-    bool MP4GetTrackAtomData (MP4FileHandle hFile, MP4TrackId trackId, const char *atomName, uint8_t ** outAtomData, uint64_t * outDataSize)
-    {
-        if (MP4_IS_VALID_FILE_HANDLE(hFile)) {
-            try {
-                return ((MP4File *)hFile)->GetTrackAtomData(trackId, atomName, outAtomData, outDataSize);
-            } catch( Exception* x ) {
-                mp4v2::impl::log.errorf(*x);
-                delete x;
-            }
-            catch( ... ) {
-                mp4v2::impl::log.errorf( "%s: failed", __FUNCTION__ );
-            }
-        }
-        return false;
-    }
-
-    MP4V2_EXPORT
-    void MP4FreeTrackAtomData(uint8_t * pAtomData)
-    {
-       if (pAtomData)
-          free(pAtomData);
-    }
-   
     bool MP4GetTrackIntegerProperty (
         MP4FileHandle hFile, MP4TrackId trackId,
         const char* propName,
@@ -3208,28 +3277,6 @@ MP4FileHandle MP4ReadProvider( const char* fileName, const MP4FileProvider* file
         }
         return 0;
     }
-
-    uint64_t MP4GetSampleFileOffset(
-        MP4FileHandle hFile,
-        MP4TrackId    trackId,
-        MP4SampleId   sampleId )
-    {
-        if (MP4_IS_VALID_FILE_HANDLE(hFile)) {
-            try {
-                return ((MP4File*)hFile)->GetSampleFileOffset(
-                           trackId, sampleId);
-            }
-            catch( Exception* x ) {
-                mp4v2::impl::log.errorf(*x);
-                delete x;
-            }
-            catch( ... ) {
-                mp4v2::impl::log.errorf( "%s: failed", __FUNCTION__ );
-            }
-        }
-        return 0;
-    }
-
 
     uint32_t MP4GetTrackMaxSampleSize(
         MP4FileHandle hFile,
@@ -3997,7 +4044,7 @@ MP4FileHandle MP4ReadProvider( const char* fileName, const MP4FileProvider* file
 
         try {
             ASSERT(pFile);
-            pFile->Modify(fileName);
+            pFile->Modify(fileName, NULL, NULL);
             pFile->Make3GPCompliant(fileName, majorBrand, minorVersion, supportedBrands, supportedBrandsCount, deleteIodsAtom);
             pFile->Close();
             delete pFile;
@@ -4011,8 +4058,7 @@ MP4FileHandle MP4ReadProvider( const char* fileName, const MP4FileProvider* file
             mp4v2::impl::log.errorf("%s: failed", __FUNCTION__ );
         }
 
-        if (pFile)
-            delete pFile;
+        delete pFile;
         return false;
     }
 
@@ -4031,7 +4077,7 @@ MP4FileHandle MP4ReadProvider( const char* fileName, const MP4FileProvider* file
 
         try {
             ASSERT(pFile);
-            pFile->Modify(fileName);
+            pFile->Modify(fileName, NULL, NULL);
             pFile->MakeIsmaCompliant(addIsmaComplianceSdp);
             pFile->Close();
             delete pFile;
@@ -4046,8 +4092,7 @@ MP4FileHandle MP4ReadProvider( const char* fileName, const MP4FileProvider* file
                                     fileName );
         }
 
-        if (pFile)
-            delete pFile;
+        delete pFile;
         return false;
     }
 
@@ -4106,8 +4151,7 @@ MP4FileHandle MP4ReadProvider( const char* fileName, const MP4FileProvider* file
             mp4v2::impl::log.errorf("%s: failed", __FUNCTION__ );
         }
 
-        if (pFile)
-            delete pFile;
+        delete pFile;
         return NULL;
     }
 
@@ -4468,7 +4512,7 @@ MP4FileHandle MP4ReadProvider( const char* fileName, const MP4FileProvider* file
         {
             ipod_uuid = new IPodUUIDAtom(*(MP4File*)hFile);
         }
-        catch( std::bad_alloc ) {
+        catch( const std::bad_alloc& ) {
             mp4v2::impl::log.errorf("%s: unable to allocate IPodUUIDAtom", __FUNCTION__);
         }
         catch( Exception* x ) {
@@ -4577,12 +4621,6 @@ bool MP4GetTrackName(
     return false;
 }
 
-void MP4FreeTrackName(char * pTrackName)
-{
-   if (pTrackName)
-      free(pTrackName);
-}
-   
 ///////////////////////////////////////////////////////////////////////////////
 
 bool MP4SetTrackName(

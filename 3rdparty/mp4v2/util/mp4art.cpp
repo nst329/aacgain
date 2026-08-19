@@ -40,7 +40,7 @@ private:
         LC_ADD,
         LC_REMOVE,
         LC_REPLACE,
-        LC_EXTRACT,
+        LC_EXTRACT
     };
 
 public:
@@ -48,7 +48,7 @@ public:
 
 protected:
     // delegates implementation
-    bool utility_option( uint32_t, bool& );
+    bool utility_option( int, bool& );
     bool utility_job( JobContext& );
 
 private:
@@ -372,7 +372,7 @@ ArtUtility::utility_job( JobContext& job )
 ///////////////////////////////////////////////////////////////////////////////
 
 bool
-ArtUtility::utility_option( uint32_t code, bool& handled )
+ArtUtility::utility_option( int code, bool& handled )
 {
     handled = true;
 

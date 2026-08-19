@@ -15,14 +15,17 @@
 //  The Initial Developer of the Original Code is Ullrich Pollaehne.
 //  Portions created by Kona Blend are Copyright (C) 2008.
 //  Portions created by David Byron are Copyright (C) 2010.
+//  Portions created by Robert Kausch are Copyright (C) 2022.
 //  All Rights Reserved.
 //
 //  Contributors:
 //      Kona Blend, kona8lend@@gmail.com
 //      Ullrich Pollaehne, u.pollaehne@@gmail.com
 //      David Byron, dbyron@dbyron.com
+//      Robert Kausch, robert.kausch@freac.org
 //
 ///////////////////////////////////////////////////////////////////////////////
+
 #include "util/impl.h"
 
 namespace mp4v2 { namespace util {
@@ -48,6 +51,7 @@ private:
         LC_CHPT_ANY = _LC_MAX,
         LC_CHPT_QT,
         LC_CHPT_NERO,
+        LC_CHPT_NATIVE,
         LC_CHPT_COMMON,
         LC_CHP_LIST,
         LC_CHP_CONVERT,
@@ -74,7 +78,7 @@ public:
 
 protected:
     // delegates implementation
-    bool utility_option( uint32_t, bool& );
+    bool utility_option( int, bool& );
     bool utility_job( JobContext& );
 
 private:
@@ -93,8 +97,8 @@ private:
     void        fixQtScale(MP4FileHandle );
     MP4TrackId  getReferencingTrack( MP4FileHandle, bool& );
     string      getChapterTypeName( MP4ChapterType ) const;
-    bool        parseChapterFile( const string, vector<MP4Chapter_t>&, Timecode::Format& );
-    bool        readChapterFile( const string, char**, File::Size& );
+    bool        parseChapterFile( const string&, vector<MP4Chapter_t>&, Timecode::Format& );
+    bool        readChapterFile( const string&, char**, File::Size& );
     MP4Duration convertFrameToMillis( MP4Duration, uint32_t );
 
     MP4ChapterType _ChapterType;
@@ -134,6 +138,7 @@ ChapterUtility::ChapterUtility( int argc, char** argv )
     _parmGroup.add( 'A', false, "chapter-any",   false, LC_CHPT_ANY,    "act on any chapter type (default)" );
     _parmGroup.add( 'Q', false, "chapter-qt",    false, LC_CHPT_QT,     "act on QuickTime chapters" );
     _parmGroup.add( 'N', false, "chapter-nero",  false, LC_CHPT_NERO,   "act on Nero chapters" );
+    _parmGroup.add(  0 , false, "format-native", false, LC_CHPT_NATIVE, "export chapters in native format (default)" );
     _parmGroup.add( 'C', false, "format-common", false, LC_CHPT_COMMON, "export chapters in common format" );
     _groups.push_back( &_parmGroup );
 
@@ -386,7 +391,7 @@ ChapterUtility::actionExport( JobContext& job )
         return FAILURE;
     }
 
-    // write the chapters
+    // set up format
 #if defined( _WIN32 )
     static const char* LINEND = "\r\n";
 #else
@@ -395,10 +400,48 @@ ChapterUtility::actionExport( JobContext& job )
     File::Size nout;
     bool failure = SUCCESS;
     int width = 2;
-    if( CHPT_FMT_COMMON == _ChapterFormat && (chapterCount / 100) >= 1 )
-    {
+    if( _ChapterFormat == CHPT_FMT_COMMON && (chapterCount / 100) >= 1 )
         width = 3;
+
+    // write additional information
+    if( _ChapterFormat == CHPT_FMT_NATIVE ) {
+        ostringstream oss;
+        // write metadata
+        const MP4Tags* tags = MP4TagsAlloc();
+        MP4TagsFetch( tags, job.fileHandle );
+
+        if( tags->albumArtist && (!tags->artist || !strequal(tags->albumArtist, tags->artist)) )
+            oss << "## album-artist: " << tags->albumArtist << LINEND;
+
+        if( tags->artist )
+            oss << "## artist: " << tags->artist << LINEND;
+
+        if( tags->album && (!tags->name || !strequal(tags->album, tags->name)) )
+            oss << "## album: " << tags->album << LINEND;
+
+        if( tags->name )
+            oss << "## title: " << tags->name << LINEND;
+
+        if( oss.tellp() > 0 )
+            oss << "##" << LINEND;
+
+        MP4TagsFree( tags );
+
+        // write total duration
+        Timecode movieDuration( MP4GetDuration( job.fileHandle ),
+                                MP4GetTimeScale( job.fileHandle ) );
+        movieDuration.setScale( CHAPTERTIMESCALE );
+        movieDuration.setFormat( Timecode::DECIMAL );
+
+        oss << "## total-duration: " << movieDuration.svalue << LINEND
+            << "##" << LINEND;
+
+        string str = oss.str();
+        if( out.write( str.c_str(), str.size(), nout ) )
+            failure = herrf( "write to %s failed: %s\n", outName.c_str(), sys::getLastErrorStr() );
     }
+
+    // write the chapters
     Timecode duration( 0, CHAPTERTIMESCALE );
     duration.setFormat( Timecode::DECIMAL );
     for( uint32_t i = 0; i < chapterCount; ++i )
@@ -625,10 +668,10 @@ ChapterUtility::utility_job( JobContext& job )
 
 /** process command-line option
  *
- *  @see Utility::utility_option( uint32_t, bool& )
+ *  @see Utility::utility_option( int, bool& )
  */
 bool
-ChapterUtility::utility_option( uint32_t code, bool& handled )
+ChapterUtility::utility_option( int code, bool& handled )
 {
     handled = true;
 
@@ -646,6 +689,10 @@ ChapterUtility::utility_option( uint32_t code, bool& handled )
         case 'N':
         case LC_CHPT_NERO:
             _ChapterType = MP4ChapterTypeNero;
+            break;
+
+        case LC_CHPT_NATIVE:
+            _ChapterFormat = CHPT_FMT_NATIVE;
             break;
 
         case 'C':
@@ -834,7 +881,7 @@ ChapterUtility::getChapterTypeName( MP4ChapterType chapterType) const
  *  @return true if there was an error, false otherwise
  */
 bool
-ChapterUtility::readChapterFile( const string filename, char** buffer, File::Size& fileSize )
+ChapterUtility::readChapterFile( const string& filename, char** buffer, File::Size& fileSize )
 {
     // open the file
     File in( filename, File::MODE_READ );
@@ -856,6 +903,7 @@ ChapterUtility::readChapterFile( const string filename, char** buffer, File::Siz
     if( in.read( inBuf, fileSize, nin ) )
     {
         in.close();
+        free(inBuf);
         return herrf( "reading chapter file '%s' failed: %s\n", filename.c_str(), sys::getLastErrorStr() );
     }
     in.close();
@@ -879,7 +927,7 @@ ChapterUtility::readChapterFile( const string filename, char** buffer, File::Siz
  *  @return true if there was an error, false otherwise
  */
 bool
-ChapterUtility::parseChapterFile( const string filename, vector<MP4Chapter_t>& chapters, Timecode::Format& format )
+ChapterUtility::parseChapterFile( const string& filename, vector<MP4Chapter_t>& chapters, Timecode::Format& format )
 {
     // get the content
     char * inBuf;
@@ -912,8 +960,6 @@ ChapterUtility::parseChapterFile( const string filename, vector<MP4Chapter_t>& c
     pos = inBuf;
 
     // check for a BOM
-    char bom[5] = {0};
-    int bomLen = 0;
     const unsigned char* uPos = reinterpret_cast<unsigned char*>( pos );
     if( 0xEF == *uPos && 0xBB == *(uPos+1) && 0xBF == *(uPos+2) )
     {
@@ -923,22 +969,12 @@ ChapterUtility::parseChapterFile( const string filename, vector<MP4Chapter_t>& c
     else if(   ( 0xFE == *uPos && 0xFF == *(uPos+1) )   // UTF-16 big endian
             || ( 0xFF == *uPos && 0xFE == *(uPos+1) ) ) // UTF-16 little endian
     {
-        // store the BOM to prepend the title strings
-        bom[0] = *pos++;
-        bom[1] = *pos++;
-        bomLen = 2;
         return herrf( "chapter file '%s' has UTF-16 encoding which is not supported (only UTF-8 is allowed)\n",
                       filename.c_str() );
     }
     else if(   ( 0x0 == *uPos && 0x0 == *(uPos+1) && 0xFE == *(uPos+2) && 0xFF == *(uPos+3) )   // UTF-32 big endian
             || ( 0xFF == *uPos && *(uPos+1) == 0xFE && *(uPos+2) == 0x0 && 0x0 == *(uPos+3) ) ) // UTF-32 little endian
     {
-        // store the BOM to prepend the title strings
-        bom[0] = *pos++;
-        bom[1] = *pos++;
-        bom[2] = *pos++;
-        bom[3] = *pos++;
-        bomLen = 4;
         return herrf( "chapter file '%s' has UTF-32 encoding which is not supported (only UTF-8 is allowed)\n",
                       filename.c_str() );
     }
@@ -1000,11 +1036,7 @@ ChapterUtility::parseChapterFile( const string filename, vector<MP4Chapter_t>& c
 
             formatState = FMT_STATE_FINISH;
         }
-#if defined( _MSC_VER )
-        else if( 0 == strnicmp( pos, "CHAPTER", 7 ) )
-#else
         else if( 0 == strncasecmp( pos, "CHAPTER", 7 ) )
-#endif
         {
             // common format: CHAPTERxx=hh:mm:ss.sss\nCHAPTERxxNAME=<title>
 
@@ -1029,7 +1061,7 @@ ChapterUtility::parseChapterFile( const string filename, vector<MP4Chapter_t>& c
             {
                 // mark the chapter title
                 uint32_t chNr = 0;
-                sscanf( pos, "chapter%dname", &chNr );
+                sscanf( pos, "chapter%uname", &chNr );
                 if( chNr != currentChapter )
                 {
                     // different chapter number => different chapter definition pair
@@ -1055,7 +1087,7 @@ ChapterUtility::parseChapterFile( const string filename, vector<MP4Chapter_t>& c
             {
                 // mark the chapter start time
                 uint32_t chNr = 0;
-                sscanf( pos, "chapter%d", &chNr );
+                sscanf( pos, "chapter%u", &chNr );
                 if( chNr != currentChapter )
                 {
                     // different chapter number => different chapter definition pair

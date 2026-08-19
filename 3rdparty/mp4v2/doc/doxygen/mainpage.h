@@ -54,10 +54,10 @@ not exported via the public API is expressly not supported and may change
 at any time without notice.
 
 The MP4v2 library can be used by either C or C++ programs. The calling
-convention is C but for convenience if C++ is used default function arguments
+convention is C but for convenience, if C++ is used, default function arguments
 have been added where appropriate.
 
-@example example/provider/provider.c
+@example example/callbacks/callbacks.c
 @example example/itmf/generic.c
 @example example/itmf/tags.c
 */
